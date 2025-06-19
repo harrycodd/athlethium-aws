@@ -66,7 +66,7 @@ def PostConfirmation(event, context):
             )
     except Exception as e:
         print(f"Failed to auto-confirm email for {user_id}: {e}")
-    userTable.put_item(Item={"userId": user_id, "signUpCompleted": False})
+    userTable.put_item(Item={"userId": user_id, "isRegistered": False})
     return event
 
 def handle_put_request(userId, body):

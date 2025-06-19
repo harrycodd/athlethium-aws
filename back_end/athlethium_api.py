@@ -9,29 +9,6 @@ from .athlethium_lambdas import athlethiumLambdas
 class athlethiumAPI:
 
     def create_api(self, stack, user_pool, lambdas):
-        def add_method(
-            root,
-            method,
-            lambda_handler,
-            name="",
-            method_responses=None,
-            request_parameters=None,
-            authorization=True,
-        ):
-            root.add_method(
-                method,
-                apigateway.LambdaIntegration(lambdas[lambda_handler]),
-                authorization_type=(
-                    apigateway.AuthorizationType.COGNITO
-                    if authorization
-                    else apigateway.AuthorizationType.NONE
-                ),
-                authorizer=authorizer if authorization else None,
-                operation_name=name,
-                method_responses=method_responses,
-                request_parameters=request_parameters,
-            )
-
         authorizer = apigateway.CognitoUserPoolsAuthorizer(
             stack, "athlethiumAuthorizer", cognito_user_pools=[user_pool]
         )
@@ -46,115 +23,134 @@ class athlethiumAPI:
             },
         )
 
+        # Create usage plan with rate limiting
+        usage_plan = apigateway.UsagePlan(
+            stack,
+            "athlethiumUsagePlan",
+            name="AthlethiumStandardPlan",
+            description="Standard usage plan for Athlethium API",
+            throttle=apigateway.ThrottleSettings(
+                rate_limit=100,   # 100 requests per second per user
+                burst_limit=200   # 200 requests burst capacity per user
+            ),
+            quota=apigateway.QuotaSettings(
+                limit=10000,      # 10,000 requests per day
+                period=apigateway.Period.DAY
+            )
+        )
+
+        # Add API to usage plan after deployment
+        usage_plan.add_api_stage(
+            api=api,
+            stage=api.deployment_stage
+        )
+
+        def add_method(
+            root,
+            method,
+            lambda_handler,
+            name="",
+            method_responses=None,
+            request_parameters=None,
+            authorization=True,
+        ):
+            method_obj = root.add_method(
+                method,
+                apigateway.LambdaIntegration(lambdas[lambda_handler]),
+                authorization_type=(
+                    apigateway.AuthorizationType.COGNITO
+                    if authorization
+                    else apigateway.AuthorizationType.NONE
+                ),
+                authorizer=authorizer if authorization else None,
+                operation_name=name,
+                method_responses=method_responses,
+                request_parameters=request_parameters,
+            )
+            
+            return method_obj
+
         # /details - User details endpoints
         details = api.root.add_resource("details")
         
-        # /details/get
-        details_get = details.add_resource("get")
-        add_method(details_get, "GET", "get_user_details", "Get User Details")
+        # /details
+        add_method(details, "GET", "get_user_details", "Get User Details")
         
-        # /details/update
-        details_update = details.add_resource("update")
-        add_method(details_update, "PUT", "update_user_details", "Update User Details")
+        # /details
+        add_method(details, "PUT", "update_user_details", "Update User Details")
+
+        # /signup - User signup endpoint
+        signup = api.root.add_resource("signup")
         
-        # /details/delete
-        details_delete = details.add_resource("delete")
-        add_method(details_delete, "DELETE", "delete_user_details", "Delete User Details")
+        # /signup
+        add_method(signup, "PUT", "user_signup", "User Signup")
 
         # /metrics - User metrics endpoints
         metrics = api.root.add_resource("metrics")
         
-        # /metrics/get
-        metrics_get = metrics.add_resource("get")
-        add_method(metrics_get, "GET", "get_user_metrics", "Get User Metrics")
+        # /metrics
+        add_method(metrics, "GET", "get_user_metrics", "Get User Metrics")
         
-        # /metrics/update
-        metrics_update = metrics.add_resource("update")
-        add_method(metrics_update, "PUT", "update_user_metrics", "Update User Metrics")
+        # /metrics
+        add_method(metrics, "PUT", "update_user_metrics", "Update User Metrics")
+        
+        # /metrics/range - Simplified date range endpoint
+        metrics_range = metrics.add_resource("range")
+        add_method(metrics_range, "GET", "get_user_metrics_range", "Get User Metrics Range")
 
         # /schedule - User schedule endpoints
         schedule = api.root.add_resource("schedule")
         
-        # /schedule/get
-        schedule_get = schedule.add_resource("get")
-        add_method(schedule_get, "GET", "get_user_schedule", "Get User Schedule")
+        # /schedule
+        add_method(schedule, "GET", "get_user_schedule", "Get User Schedule")
         
-        # /schedule/update
-        schedule_update = schedule.add_resource("update")
-        add_method(schedule_update, "PUT", "update_user_schedule", "Update User Schedule")
+        # /schedule
+        add_method(schedule, "PUT", "update_user_schedule", "Update User Schedule")
 
         # /session - Training session endpoints
         session = api.root.add_resource("session")
         
-        # /session/add
-        session_add = session.add_resource("add")
-        add_method(session_add, "POST", "add_training", "Add Training Session")
+        # /session
+        add_method(session, "POST", "add_training", "Add Training Session")
         
-        # /session/get
-        session_get = session.add_resource("get")
-        add_method(session_get, "GET", "get_training_session", "Get Training Session")
+        # /session
+        add_method(session, "GET", "get_training_session", "Get Training Session")
         
-        # /session/update
-        session_update = session.add_resource("update")
-        add_method(session_update, "PUT", "update_session_details", "Update Training Session")
+        # /session
+        add_method(session, "PUT", "update_session_details", "Update Training Session")
         
-        # /session/delete
-        session_delete = session.add_resource("delete")
-        add_method(session_delete, "DELETE", "delete_session_details", "Delete Training Session")
+        # /session
+        add_method(session, "DELETE", "delete_session_details", "Delete Training Session")
 
         # /training - Training related endpoints
         training = api.root.add_resource("training")
         
-        # /training/get
-        training_get = training.add_resource("get")
-        add_method(training_get, "GET", "get_user_training", "Get User Training")
+        # /training
+        add_method(training, "GET", "get_user_training", "Get User Training")
         
-        # /training/run
-        training_run = training.add_resource("run")
-        add_method(training_run, "POST", "training_algorithm", "Run Training Algorithm")
+        # /training
+        add_method(training, "POST", "training_algorithm", "Run Training Algorithm")
 
-        # /partner - Partner integrations (Commented out until lambda functions are implemented)
-        # partner = api.root.add_resource("partner")
+        # /account - Account management endpoints
+        account = api.root.add_resource("account")
         
-        # # /partner/strava
-        # strava = partner.add_resource("strava")
+        # /account - Delete account (permanently delete all user data)
+        add_method(account, "DELETE", "account_delete", "Delete User Account")
         
-        # # /partner/strava/webhooks
-        # strava_webhooks = strava.add_resource("webhooks")
-        # add_method(strava_webhooks, "POST", "strava_webhook_verify", "Strava Webhook Verification", authorization=False)
-        # add_method(strava_webhooks, "POST", "strava_webhook_handler", "Strava Webhook Handler", authorization=False)
-        
-        # # /partner/strava/auth
-        # strava_auth = strava.add_resource("auth")
-        # strava_authorize = strava_auth.add_resource("authorize")
-        # add_method(strava_authorize, "POST", "strava_oauth_initiate", "Initiate Strava OAuth", authorization=True)
-        
-        # strava_callback = strava_auth.add_resource("callback")
-        # add_method(strava_callback, "POST", "strava_oauth_callback", "Strava OAuth Callback", authorization=False)
-        
-        # strava_refresh = strava_auth.add_resource("refresh")
-        # add_method(strava_refresh, "POST", "strava_token_refresh", "Refresh Strava Token", authorization=True)
-        
-        # strava_deauth = strava_auth.add_resource("deauthorize")
-        # add_method(strava_deauth, "POST", "strava_deauthorize", "Deauthorize Strava", authorization=True)
-        
-        # # /partner/wahoo
-        # wahoo = partner.add_resource("wahoo")
-        
-        # # /partner/wahoo/webhooks
-        # wahoo_webhooks = wahoo.add_resource("webhooks")
-        # add_method(wahoo_webhooks, "POST", "wahoo_webhook_verify", "Wahoo Webhook Verification", authorization=False)
-        # add_method(wahoo_webhooks, "POST", "wahoo_webhook_handler", "Wahoo Webhook Handler", authorization=False)
-        
-        # # /partner/wahoo/auth (placeholder for future wahoo auth endpoints)
-        # wahoo_auth = wahoo.add_resource("auth")
+        # /account - Export user data
+        add_method(account, "GET", "account_export", "Export User Data")
 
-        # /chats - Chat related endpoints (Commented out until lambda functions are implemented)
-        # chats = api.root.add_resource("chats")
-        # add_method(chats, "GET", "get_chats", "Get Chats")
-        # chats_history = chats.add_resource("history")
-        # add_method(chats_history, "GET", "get_chat_history", "Get Chat History")
-        # chats_send = chats.add_resource("send")
-        # add_method(chats_send, "POST", "send_chat_message", "Send Chat Message")
+        # /chats - Chat system endpoints
+        chats = api.root.add_resource("chats")
+        
+        # /chats - Get chat messages
+        add_method(chats, "GET", "chat_get_messages", "Get Chat Messages")
+        
+        # /chats - Send chat message
+        add_method(chats, "POST", "chat_send_message", "Send Chat Message")
+        
+        # /chats/history - Get chat history
+        history = chats.add_resource("history")
+        add_method(history, "GET", "chat_get_history", "Get Chat History")
 
         return api

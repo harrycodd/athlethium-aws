@@ -9,6 +9,10 @@ class athlethiumDB:
         self.dailyMetrics = None
         self.trainingSchedule = None
         self.workoutsTable = None
+        self.partnerTokens = None
+        self.chatTable = None
+        self.goalsTable = None
+        self.userSessionsTable = None
 
     def create_dbs(self, stack):
         self.userTable = dynamodb.Table(
@@ -46,6 +50,54 @@ class athlethiumDB:
             table_name="workoutsTable",
             partition_key=dynamodb.Attribute(
                 name="workoutId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
+
+        self.partnerTokens = dynamodb.Table(
+            stack, "partnerTokens",
+            table_name="partnerTokens",
+            partition_key=dynamodb.Attribute(
+                name="partnerKey",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
+
+        self.chatTable = dynamodb.Table(
+            stack, "chatTable",
+            table_name="chatTable",
+            partition_key=dynamodb.Attribute(
+                name="userId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="messageId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
+
+        self.goalsTable = dynamodb.Table(
+            stack, "goalsTable",
+            table_name="goalsTable",
+            partition_key=dynamodb.Attribute(
+                name="goalId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
+
+        self.userSessionsTable = dynamodb.Table(
+            stack, "userSessionsTable",
+            table_name="userSessionsTable",
+            partition_key=dynamodb.Attribute(
+                name="userId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="date",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,

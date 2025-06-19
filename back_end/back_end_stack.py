@@ -24,10 +24,10 @@ class BackEndStack(Stack):
         cognito = athlethiumCognito()
         cognito.create_cognito(self)
 
-        lambdas = athlethiumLambdas()
-        lambdas.create_lambdas(self, tables, cognito)
-
         buckets = athlethiumBuckets().create_buckets(self)
+
+        lambdas = athlethiumLambdas()
+        lambdas.create_lambdas(self, tables, cognito, buckets)
 
         api = athlethiumAPI().create_api(self, cognito.user_pool, lambdas)
 

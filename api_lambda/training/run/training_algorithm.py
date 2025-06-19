@@ -13,9 +13,27 @@ IMPLEMENT RACE SIM LOGIC AT SOME POINT
 
 dynamodb = boto3.resource('dynamodb', region_name="eu-west-2")
 workoutsTable = dynamodb.Table("workoutsTable")
+goalsTable = dynamodb.Table("goalsTable")
 
 def add_goal(goal):
-    return
+    """Add a goal to the goals table"""
+    try:
+        goalId = str(uuid.uuid4())
+        goal_item = {
+            "goalId": goalId,
+            "userId": goal.get("userId", ""),
+            "name": goal["name"],
+            "date": goal["date"].strftime('%Y-%m-%d') if isinstance(goal["date"], datetime.date) else goal["date"],
+            "type": goal["type"],
+            "sports": goal["sports"]
+        }
+        
+        goalsTable.put_item(Item=goal_item)
+        print(f"Successfully added goal {goalId} to DynamoDB")
+        return goalId
+    except Exception as e:
+        print(f"Error adding goal to DynamoDB: {str(e)}")
+        return None
 
 def load_workout_library():
     """Load workout library from the workout.json file."""
@@ -134,17 +152,21 @@ def training_algorithm(user_profile, date, userId):
     tomorrow = date + datetime.timedelta(days=1)
     day_after = date + datetime.timedelta(days=2)
 
+    # Define endurance sports early
+    endurance_sport = [sport for sport in user_profile["sports"] if sport in ['cycling', 'running', 'swimming']]
+
     #Serverly ill logic
     if user_profile["injury"] == 2 or user_profile["illness"] == 2:
         return get_session(-1, 0, "", userId, date, user_profile)
     
     #Goal logic
-    if len(user_profile["goal"]) == {}:
+    if not user_profile["goal"] or len(user_profile["goal"]) == 0:
         goal_date = date + datetime.timedelta(weeks=12)
         days_until = (goal_date - date).days
         goal_name = "Artifical Goal"
         goal_type = "artificalGoal"
         goal = {
+            "userId": userId,
             "name": goal_name,
             "date": goal_date,
             "type": goal_type,
@@ -174,10 +196,11 @@ def training_algorithm(user_profile, date, userId):
                 goal_type = "artificalGoal"
                 days_until = (goal_date - date).days
                 goal = {
+                    "userId": userId,
                     "name": goal_name,
                     "date": goal_date,
                     "type": goal_type,
-                    "sport": goal["sports"]
+                    "sports": goal["sports"]
                 }
                 add_goal(goal)
 
@@ -229,13 +252,41 @@ def training_algorithm(user_profile, date, userId):
     last_running_session = 8
     last_swimming_session = 8
     last_intense_day = 8
+    no_completed_session = 0
 
     endurance_side_sport = [sport for sport in endurance_sport if sport not in user_profile["focused_sports"]]
     sport_session = {}
     for sport in endurance_side_sport:
         sport_session[sport] = 1
 
-    sessions_left = no_session - sum(sport_session.values)
+    # Calculate no_session first (moved from later in the code)
+    if len(endurance_sport) > 1:
+        if user_profile["weekly_hours"] <= 6:
+            double_days = 0
+        elif user_profile["weekly_hours"] <= 10:  # Fixed duplicate condition
+            double_days = 1
+        elif user_profile["weekly_hours"] <= 14:  # Fixed duplicate condition
+            double_days = 2
+        else:
+            double_days = 3
+    else:
+        double_days = 0
+
+    recovery_index = user_profile["recovery_metric"]
+    if recovery_index == 1:
+        rest_days = 4
+    elif recovery_index == 2:
+        rest_days = 3
+    elif recovery_index == 3:
+        rest_days = 2
+    elif recovery_index == 4:
+        rest_days = 1
+    else: 
+        rest_days = 1
+
+    no_session = 7 + double_days - rest_days  # Fixed from 8 to 7 (days in week)
+
+    sessions_left = no_session - sum(sport_session.values())  # Fixed method call
     session_no_focused_sport = round(sessions_left / len(user_profile["focused_sports"]))
 
     for sport in user_profile["focused_sports"]:
@@ -303,45 +354,24 @@ def training_algorithm(user_profile, date, userId):
         total_focus[user_profile["history"]["running"]["focus"][i]] += 1
         total_focus[user_profile["history"]["swimming"]["focus"][i]] += 1
 
-    recovery_index = user_profile["recovery_metric"]
+    # Update rest_day logic based on recovery index
     if recovery_index == 1:
-        rest_days = 4
         last_rest_day += 2 
     elif recovery_index == 2:
-        rest_days = 3
         last_rest_day += 3
     elif recovery_index == 3:
-        rest_days = 2
         last_rest_day += 3
     elif recovery_index == 4:
-        rest_days = 1
         last_rest_day += 4 
     else: 
-        rest_days = 1
         last_rest_day += 5  
 
-    if last_rest_day == 7 and user_profile["upcoming_schedule"][0] >= 1:
+    if last_rest_day >= 7 and user_profile["upcoming_schedule"][0] >= 1:
         if user_profile["upcoming_schedule"][1] >= 1:
             if user_profile["upcoming_schedule"][2] >= 1:
                 if last_recovery_day == 8:
                     return get_session(-1, 0, "", userId, date, user_profile)  
-            return recovery_day(user_profile, userId, date) 
-    
-    #Double days
-    endurance_sport = [sport for sport in user_profile["sports"] if sport in ['cycling', 'running', 'swimming']]
-    if len(endurance_sport) > 1:
-        if user_profile["weekly_hours"] <= 6:
-            double_days = 0
-        elif user_profile["weekly_hours"] <= 6:
-            double_days = 1
-        elif user_profile["weekly_hours"] <= 6:
-            double_days = 2
-        else:
-            double_days = 3
-    else:
-        double_days = 0
-
-    no_session = 8 + double_days - rest_days
+            return recovery_day(user_profile, userId, date)
 
     today_session = []
     tomorrow_session = []
@@ -359,8 +389,8 @@ def training_algorithm(user_profile, date, userId):
 
     if \
     double_days > 0 and no_session - no_completed_session > 0 and completed_rest_days <= rest_days and \
-    len(tomorrow_session) <= 1 and not (tomorrow_session[0]["time"] >= 7200 \
-    (user_profile["upcoming_schedule"][1] * 3600) - tomorrow_session[0]["time"] >= 9000) and \
+    len(tomorrow_session) <= 1 and (len(tomorrow_session) == 0 or not (tomorrow_session[0]["time"] >= 7200 or \
+    (user_profile["upcoming_schedule"][1] * 3600) - tomorrow_session[0]["time"] >= 9000)) and \
     today_session == [] and user_profile["upcoming_schedule"][0] >= 3 and hard_week:
         #Double day logic
         if today_session != []:
@@ -448,13 +478,13 @@ def training_algorithm(user_profile, date, userId):
 
         for sport in sports:
             if intensity[sport] == 1:
-                hours[sport] = round((1.5 * max_hours * total_sport_hours_multiplier[i])  / no_session) / 2
+                hours[sport] = round((1.5 * max_hours * total_sport_hours_multiplier[sport])  / no_session) / 2
             else:
-                hours[sport] = round((max_hours * total_sport_hours_multiplier[i]) / no_session) / 2
-            hours[sport] = min(hours[sport], round(user_profile["upcoming_schedule"] - 1) / 2)
+                hours[sport] = round((max_hours * total_sport_hours_multiplier[sport]) / no_session) / 2
+            hours[sport] = min(hours[sport], round(user_profile["upcoming_schedule"][0] - 1) / 2)
             get_session(intensity[sport], hours[sport], sport, userId, date, user_profile)
 
-        total_hours += sum(hours.values) + 0.5
+        total_hours += sum(hours.values()) + 0.5
 
     elif today_session != [] and len(today_session) > 1:
         for i in today_session:
@@ -556,13 +586,13 @@ def training_algorithm(user_profile, date, userId):
                 total_sport_hours_multiplier[i] /= total
 
             if intensity == 1:
-                hours = round((3 * max_hours * total_sport_hours_multiplier[i])  / no_session) / 2
+                hours = round((3 * max_hours * total_sport_hours_multiplier[sport])  / no_session) / 2
             else:
-                hours = round((2 * max_hours * total_sport_hours_multiplier[i]) / no_session) / 2
+                hours = round((2 * max_hours * total_sport_hours_multiplier[sport]) / no_session) / 2
             if total_hours > 0:
-                hours = min(hours * total_sport_hours_multiplier[i], user_profile["upcoming_schedule"] - total_hours)
+                hours = min(hours, user_profile["upcoming_schedule"][0] - total_hours)
             else:
-                hours = min(hours * total_sport_hours_multiplier[i], user_profile["upcoming_schedule"])
+                hours = min(hours, user_profile["upcoming_schedule"][0])
 
             # Regulate TSS
             if intensity == 1:
@@ -593,37 +623,34 @@ def training_algorithm(user_profile, date, userId):
             total_hours += hours + 0.5
 
     # Check for strength and Yoga
-    if user_profile["upcoming_schedule"] - total_hours >= 0.5:
+    if user_profile["upcoming_schedule"][0] - total_hours >= 0.5:
         if "strength" in user_profile["sports"] and \
         user_profile["history"]["strength"]["hours"][5] == 0 and \
         user_profile["history"]["strength"]["hours"][6] == 0:
             # Set appropriate session duration based on available time
-            strength_duration = min(1.0, user_profile["upcoming_schedule"] - total_hours)
+            strength_duration = min(1.0, user_profile["upcoming_schedule"][0] - total_hours)
             
-            if (user_profile["upcoming_schedule"] - total_hours) < 1:
+            if (user_profile["upcoming_schedule"][0] - total_hours) < 1:
                 # Either upper or lower body based on alternating pattern
                 if user_profile.get("last_strength_focus") == "upper":
                     focus = "lower"
                 else:
                     focus = "upper"
                     
-                # Store this focus for next time
+                # Store this focus for next time (Note: This would need to be saved to DB in real implementation)
                 user_profile["last_strength_focus"] = focus
                 
                 # Get appropriate strength workout
-                strength_session = get_session(1, strength_duration, f"strength_{focus}", userId, date, user_profile)
-                return strength_session
+                return get_session(1, strength_duration, f"strength_{focus}", userId, date, user_profile)
             else:
                 # Full body workout when more time is available
-                strength_session = get_session(1, strength_duration, "strength_full", userId, date, user_profile)
-                return strength_session
+                return get_session(1, strength_duration, "strength_full", userId, date, user_profile)
 
         elif "yoga" in user_profile["sports"]:
             # Yoga session with appropriate duration
-            yoga_duration = min(1.0, user_profile["upcoming_schedule"] - total_hours)
+            yoga_duration = min(1.0, user_profile["upcoming_schedule"][0] - total_hours)
                 
             # Get yoga workout
-            yoga_session = get_session(1, yoga_duration, "yoga", userId, date, user_profile)
-            return yoga_session
+            return get_session(1, yoga_duration, "yoga", userId, date, user_profile)
 
 

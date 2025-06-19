@@ -7,13 +7,10 @@ class athlethiumBuckets:
         self.workoutsBucket = None
 
     def create_buckets(self, stack):
-        # Create new S3 buckets (use this if buckets don't exist yet)
         self.workoutsBucket = s3.Bucket(
             stack, "workoutsBucket",
             bucket_name="athlethium-workouts"
         )
-        
-        # Return self to allow chaining and assignment
         return self
 
 
